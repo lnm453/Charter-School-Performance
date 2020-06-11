@@ -1,0 +1,149 @@
+---
+title: "FinalProject"
+author: "Mai Le"
+date: "5/17/2019"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+library(readxl)
+library(dplyr) #grouping and manipulating data
+library(ggplot2) #data visualizations
+library(mice) #missing data imputation
+```
+
+```{r, echo=FALSE, include=FALSE}
+mydata <- read_excel("~/Documents/SASUniversityEdition/myfolders/FinalProject/AchievementFirstDataset.xlsx")
+
+#remove column Student ID 
+mydata <- select(mydata, -1)
+
+# check for invalid reading scores and convert them into missing values (NA)
+mydata$BOY_Score <- ifelse(mydata$BOY_Score <1 | mydata$BOY_Score >26, NA, mydata$BOY_Score)  
+mydata$EOY_Score <- ifelse(mydata$EOY_Score <1 | mydata$EOY_Score >26, NA, mydata$EOY_Score) 
+
+mydata <- mutate(mydata, Score_diff = EOY_Score - BOY_Score)
+
+#convert variables into factors
+mydata$Grade <- factor(mydata$Grade)
+mydata$School <- factor(mydata$School)
+
+```
+## Background and Executive Summary
+```{r, echo=FALSE, warning==FALSE}
+```
+## Exploratory Data Analysis
+## find average reading score by school and grade
+Create a separate dataset for reading scores
+``` {r}
+# select only relevant variables
+df2 <- data.frame(ID = edited$Student_ID,
+                  School = edited$School,
+                  Grade = edited$Grade,
+                  BOY_score = edited$BOY_Score,
+                  EOY_score = edited$EOY_Score)
+# convert data into long format
+df2.long <- reshape(df2, direction = "long", varying = list(names(df2)[4:5]), 
+                    v.names = "Score", 
+                    idvar = c("ID"),
+                    timevar = "Period", times = c("BOY_score", "EOY_score"))
+df2.long <- within(df2.long, {
+  ID <-factor(ID)
+  Period <-factor(Period, labels=c('Beginning-Of-Year', 'End-Of-Year'))
+})
+
+# a similar data frame under listwise deletion
+#Listwise deletion
+data.listwise <- mydata[complete.cases(mydata),]
+# convert reading scores into proficiency levels
+edited.listwise <- mutate(data.listwise, BOY_level = ifelse(Grade=='5' & BOY_Score %in% 1:9, "Remedial",
+                                            ifelse(Grade=='5' & BOY_Score %in% 10:11, "Below_Proficient",
+                                            ifelse(Grade=='5' & BOY_Score %in% 12:13, "Proficient",
+                                            ifelse(Grade=='5' & BOY_Score >13, "Advanced",
+                                            ifelse(Grade=='6' & BOY_Score %in% 1:11, "Remedial",
+                                            ifelse(Grade=='6' & BOY_Score %in% 12:13, "Below_Proficient",
+                                            ifelse(Grade=='6' & BOY_Score %in% 14:15, "Proficient",
+                                            ifelse(Grade=='6' & BOY_Score >15, "Advanced", NA)))))))))       
+edited.listwise <- mutate(edited.listwise, EOY_level = ifelse(Grade=='6' & EOY_Score %in% 1:13, "Remedial",
+                                              ifelse(Grade=='6' & EOY_Score %in% 14:15, "Below_Proficient",
+                                              ifelse(Grade=='6' & EOY_Score %in% 16:17, "Proficient",
+                                              ifelse(Grade=='6' & EOY_Score >17, "Advanced",
+                                              ifelse(Grade=='5' & EOY_Score %in% 1:11, "Remedial",
+                                              ifelse(Grade=='5' & EOY_Score %in% 12:13, "Below_Proficient",
+                                              ifelse(Grade=='5' & EOY_Score %in% 14:15, "Proficient",
+                                              ifelse(Grade=='5' & EOY_Score >15, "Advanced", NA)))))))))
+
+#convert BOY_level and EOY_level into factors
+edited.listwise$BOY_level <- as.factor(edited.listwise$BOY_level)
+edited.listwise$EOY_level <- as.factor(edited.listwise$EOY_level)
+df2.lw <- data.frame(ID = edited.listwise$Student_ID,
+                  School = edited.listwise$School,
+                  Grade = edited.listwise$Grade,
+                  BOY_score = edited.listwise$BOY_Score,
+                  EOY_score = edited.listwise$EOY_Score)
+df2.lw.long <- reshape(df2.lw, direction = "long", varying = list(names(df2)[4:5]), 
+                    v.names = "Score", 
+                    idvar = c("ID"),
+                    timevar = "Period", times = c("BOY_score", "EOY_score"))
+df2.lw.long <- within(df2.long, {
+  ID <-factor(ID)
+  Period <-factor(Period, labels=c('Beginning-Of-Year', 'End-Of-Year'))
+})
+
+## Find average reading scores for Bushwick
+bushwick.raw <- filter(df2.long, School == 'Bushwick MS')
+bushwick.summary.raw <- ddply(bushwick.raw, ~Grade*Period, summarise, mean=mean(Score, na.rm = T), sd=sd(Score, na.rm = T))
+# results under listwise
+bushwick.raw.lw <- filter(df2.lw.long, School == 'Bushwick MS')
+bushwick.summary.raw.lw <- ddply(bushwick.raw.lw, ~Grade*Period, summarise, mean=mean(Score, na.rm = T))
+
+## Find average reading scores for Crown Heights
+crownheights.raw <- filter(df2.long, School == 'Crown Heights MS')
+crownheights.summary.raw <- ddply(crownheights.raw, ~Grade*Period, summarise, mean=mean(Score, na.rm = T), sd=sd(Score, na.rm = T))
+# results under listwise
+crownheights.raw.lw <- filter(df2.lw.long, School == 'Crown Heights MS')
+crownheights.summary.raw.lw <- ddply(crownheights.raw.lw, ~Grade*Period, summarise, mean=mean(Score, na.rm = T))
+
+```{r, echo=TRUE, warning=FALSE}
+# scatterplot showing interaction effect between Grade and BOY_Score in predicting EOY_Score 
+qplot(x=BOY_Score, y=EOY_Score, color=Grade, data=mydata) + geom_smooth(method='lm')
+
+# scatterplot showing interaction between School and BOY_Score in predicting EOY_Score
+qplot(x=BOY_Score, y=EOY_Score, color=School, data=mydata) + geom_smooth(method='lm')
+
+#Plot panels to show how School, Grade, and BOY_Score affect EOY_Score
+qplot(x=BOY_Score, y=EOY_Score, color=Grade, facets=School ~ ., data=mydata)
+
+#scatterplot showing Score improvement by Grade and School
+qplot(x=BOY_Score, y=Score_diff, color=Grade, data=mydata) + geom_smooth(method='lm')
+
+qplot(x=BOY_Score, y=Score_diff, color=School, data=mydata) + geom_smooth(method='lm')
+
+```
+## Linear Model
+```{r, echo=FALSE, include=FALSE}
+##Model building predicting Score diff
+mod1 = lm(Score_diff ~ School + Grade + BOY_Score + School*Grade + School*BOY_Score + Grade*BOY_Score, data = mydata)
+par(mfrow=c(2,2))
+
+#Backward Selection
+step(mod1, direction='backward')
+
+#Selected model
+diff.mod = lm(Score_diff ~ School + Grade + BOY_Score + School:Grade + 
+          Grade:BOY_Score, data = mydata)
+summary(diff.mod)
+plot(diff.mod)
+
+#Check for influential points
+cookd = cooks.distance(diff.mod)
+plot(cookd)
+```
+
+
+
